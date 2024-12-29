@@ -6,7 +6,7 @@
 #include "biquad.h"
 #include "tubeamp.h"
 
-#define URI "http://shaji.in/plugins/gnuitar-tubeamp-np"
+#define URI "http://shaji.in/plugins/fonin-tubeamp"
 
 #define UPSAMPLE_RATIO 6
 #define IMPULSE_SIZE   512
@@ -228,6 +228,7 @@ instantiate(const LV2_Descriptor*     descriptor,
 
     params -> db.channels = 1 ;
     OUT
+    return params ;
 }
 
 static void
@@ -236,6 +237,9 @@ connect_port(LV2_Handle instance,
              void*      data)
 {
     TubeAmp * tubeamp = (TubeAmp *) instance ;
+    if (data == NULL)
+        return ;
+    
 	switch ((PortIndex)port) {
 		case INPUT:
 			tubeamp -> input = (float *) data ;
@@ -244,6 +248,7 @@ connect_port(LV2_Handle instance,
 			tubeamp -> output = (float *) data ;
 			break ;
 		case IMPULSE_QUALITY:
+            HERE LOGD ("%d\n", * (int *) data);
 			tubeamp->impulse_quality = * (int *) data ;
 			break ;
 		case IMPULSE_MODEL:
@@ -353,8 +358,8 @@ run(LV2_Handle instance, uint32_t n_samples)
             }
             result = do_biquad(result, &params->decimation_filter, curr_channel);
         }
-        ptr1 = params->buf[curr_channel] + params->bufidx[curr_channel];
         
+        ptr1 = params->buf[curr_channel] + params->bufidx[curr_channel];
         /* convolve the output. We put two buffers side-by-side to avoid & in loop. */
         ptr1[IMPULSE_SIZE] = ptr1[0] = result / 500.f * (float) (MAX_SAMPLE >> 13);
         db->data[i] = convolve(ampmodels[params->impulse_model].impulse, ptr1, ampqualities[params->impulse_quality].quality) / 32.f;

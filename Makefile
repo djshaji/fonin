@@ -1,5 +1,5 @@
 cc=$(CC) $(ARGS)
-ARGS=-fPIC
+ARGS=-fPIC -g
 
 all: tubeamp.o
 	$(CC) $(ARGS) -o fonin.so -fPIC -Wl,-Bstatic -Wl,-Bdynamic -Wl,--as-needed -shared -lm *.o 
