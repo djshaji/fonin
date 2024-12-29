@@ -226,5 +226,183 @@ instantiate(const LV2_Descriptor*     descriptor,
     for (i = 0; i < MAX_CHANNELS; i += 1)
         params->buf[i] = memalign(IMPULSE_SIZE * 2, sizeof(DSP_SAMPLE));
 
+    params -> db.channels = 1 ;
     OUT
+}
+
+static void
+connect_port(LV2_Handle instance,
+             uint32_t   port,
+             void*      data)
+{
+    TubeAmp * tubeamp = (TubeAmp *) instance ;
+	switch ((PortIndex)port) {
+		case INPUT:
+			tubeamp -> input = (float *) data ;
+			break ;
+		case OUTPUT:
+			tubeamp -> output = (float *) data ;
+			break ;
+		case IMPULSE_QUALITY:
+			tubeamp->impulse_quality = * (int *) data ;
+			break ;
+		case IMPULSE_MODEL:
+			tubeamp->impulse_model = * (int *) data ;
+			break;
+		case GAIN:
+			tubeamp->gain = * (float *) data ;
+			LOGD ("gain: %f\n", tubeamp->gain);
+			break ;
+		case ASYMMETRY:
+			tubeamp->asymmetry = * (float *) data ;
+			break ;
+		case BIAS_FACTOR:
+			tubeamp->biasfactor = * (float *) data ;
+			break ;
+		case TONE_BASS:
+			tubeamp->tone_bass = * (float *) data ;
+			break;
+		case TONE_MIDDLE:
+			tubeamp->tone_middle = * (float *) data ;
+			break;
+		case TONE_TREBLE:
+			tubeamp->tone_treble = * (float *) data ;
+			break;
+    }
+}
+
+
+/* waveshaper based on generic lookup table */
+static float
+F_tube(float in, float r_i)
+{
+    float pos;
+    int_fast32_t idx;
+    
+    pos = (in / r_i) * (float) (NONLINEARITY_SCALE * NONLINEARITY_PRECISION) + (float) (NONLINEARITY_SIZE / 2);
+    
+    /* This safety catch should be made unnecessary.
+     * But it may require us to extend the nonlinearity table to ridiculously far.
+     * Besides, hard blocking distortion is fairly ok as effect when you go too loud. */
+    if (pos < 0.f) {
+        //printf("pos < 0!");
+        pos = 0.f;
+    }
+    if (pos > (float) (NONLINEARITY_SIZE - 2)) {
+        //printf("pos > size!");
+        pos = (float) (NONLINEARITY_SIZE - 2);
+    }
+
+    idx = pos;
+    pos -= idx;
+    return (nonlinearity[idx] * (1.0f-pos) + nonlinearity[idx+1] * pos) * r_i;
+}
+
+static void
+activate(LV2_Handle instance) {
+	
+}
+
+static void
+run(LV2_Handle instance, uint32_t n_samples)
+{
+	TubeAmp * params = (TubeAmp *) instance;
+    int_fast16_t i, j, k, curr_channel = 0;
+    DSP_SAMPLE *ptr1;
+    float gain;
+    int sample_rate = params -> sample_rate ;
+    params -> db.len = n_samples ;
+    params -> db.channels = 1 ;
+    params -> db.data = params -> input ;
+    params -> db.data_swap = params -> output ;
+    
+    data_block_t * db = & params -> db ;
+    
+    /* update bq states from tone controls */
+    set_lsh_biquad(sample_rate * UPSAMPLE_RATIO, 500, params->tone_bass, &params->bq_bass);
+    set_peq_biquad(sample_rate * UPSAMPLE_RATIO, 650, 500.0, params->tone_middle, &params->bq_middle);
+    set_hsh_biquad(sample_rate * UPSAMPLE_RATIO, 800, params->tone_treble, &params->bq_treble);
+
+    gain = pow(10.f, params->gain / 20.f);
+    
+    /* highpass -> low shelf eq -> lowpass -> waveshaper */
+    for (i = 0; i < db->len; i += 1) {
+        float result;
+        for (k = 0; k < UPSAMPLE_RATIO; k += 1) {
+            /* IIR interpolation */
+            params->in[curr_channel] = (db->data[i] + params->in[curr_channel] * (float) (UPSAMPLE_RATIO-1)) / (float) UPSAMPLE_RATIO;
+            result = params->in[curr_channel] / (float) MAX_SAMPLE;
+            for (j = 0; j < params->stages; j += 1) {
+                /* gain of the block */
+                result *= gain;
+                /* low-pass filter that mimicks input capacitance */
+                result = do_biquad(result, &params->lowpass[j], curr_channel);
+                /* add feedback bias current for "punch" simulation for waveshaper */
+                result = F_tube(params->bias[j] - result, params->r_i[j]);
+                /* feedback bias */
+                params->bias[j] = do_biquad((params->asymmetry - params->biasfactor * result) * params->r_k_p[j], &params->biaslowpass[j], curr_channel);
+                /* high pass filter to remove bias from the current stage */
+                result = do_biquad(result, &params->highpass[j], curr_channel);
+                
+                /* run tone controls after second stage */
+                if (j == 1) {
+                    result = do_biquad(result, &params->bq_bass, curr_channel);
+                    result = do_biquad(result, &params->bq_middle, curr_channel);
+                    result = do_biquad(result, &params->bq_treble, curr_channel);
+                }
+            }
+            result = do_biquad(result, &params->decimation_filter, curr_channel);
+        }
+        ptr1 = params->buf[curr_channel] + params->bufidx[curr_channel];
+        
+        /* convolve the output. We put two buffers side-by-side to avoid & in loop. */
+        ptr1[IMPULSE_SIZE] = ptr1[0] = result / 500.f * (float) (MAX_SAMPLE >> 13);
+        db->data[i] = convolve(ampmodels[params->impulse_model].impulse, ptr1, ampqualities[params->impulse_quality].quality) / 32.f;
+        
+        params->bufidx[curr_channel] -= 1;
+        if (params->bufidx[curr_channel] < 0)
+            params->bufidx[curr_channel] += IMPULSE_SIZE;
+        
+        curr_channel = (curr_channel + 1) % db->channels;
+    }
+}
+
+
+
+static void
+deactivate(LV2_Handle instance) {
+
+}
+
+static void
+cleanup(LV2_Handle instance) {
+	free(instance);
+}
+
+static const void*
+extension_data(const char* uri)
+{
+	return NULL;
+}
+
+static const LV2_Descriptor descriptor = {
+	URI,
+	instantiate,
+	connect_port,
+	activate,
+	run,
+	deactivate,
+	cleanup,
+	extension_data
+};
+
+LV2_SYMBOL_EXPORT
+const LV2_Descriptor*
+lv2_descriptor(uint32_t index) {
+	switch (index) {
+        case 0:  // Tube Amp
+            return &descriptor;
+        default: 
+            return NULL;
+	}
 }

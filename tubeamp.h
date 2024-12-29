@@ -58,6 +58,8 @@ typedef struct tubeamp_params {
     /* Shaji */
     float * input, * output ;
     int sample_rate ;
+    
+    data_block_t db ;
 } TubeAmp;
 
 
@@ -74,5 +76,9 @@ typedef enum {
 	TONE_MIDDLE,
 	TONE_TREBLE
 } PortIndex ;
+
+static float
+F_tube(float in, float r_i) ;
+
 
 #endif
