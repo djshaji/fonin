@@ -42,7 +42,7 @@ typedef struct tubeamp_params {
 
     /* user parameters */
     int         stages, impulse_model, impulse_quality;
-    float       gain, asymmetry, biasfactor;
+    float       *gain, asymmetry, biasfactor;
     float       tone_bass, tone_middle, tone_treble;
     
     /* internal stuff */

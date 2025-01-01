@@ -150,10 +150,11 @@ instantiate(const LV2_Descriptor*     descriptor,
             const LV2_Feature* const* features)
 {
     IN
-	TubeAmp * params = (TubeAmp *) malloc (sizeof (TubeAmp));
+	TubeAmp * params = gnuitar_memalign(1, sizeof(struct tubeamp_params));
+
 	params->sample_rate = (int) sample_rate ;
     params->stages = 4;
-    params->gain = 35.0; /* dB */
+    //~ * params->gain = 35.0; /* dB */
     params->biasfactor = -7;
     params->asymmetry = -3500;
     params->impulse_model = 0;
@@ -224,7 +225,7 @@ instantiate(const LV2_Descriptor*     descriptor,
         nonlinearity[i] -= tmp;
 
     for (i = 0; i < MAX_CHANNELS; i += 1)
-        params->buf[i] = memalign(IMPULSE_SIZE * 2, sizeof(DSP_SAMPLE));
+        params->buf[i] = gnuitar_memalign(IMPULSE_SIZE * 2, sizeof(DSP_SAMPLE));
 
     params -> db.channels = 1 ;
     OUT
@@ -255,7 +256,7 @@ connect_port(LV2_Handle instance,
 			tubeamp->impulse_model = * (int *) data ;
 			break;
 		case GAIN:
-			tubeamp->gain = * (float *) data ;
+			tubeamp->gain =  (float *) data ;
 			LOGD ("gain: %f\n", tubeamp->gain);
 			break ;
 		case ASYMMETRY:
@@ -318,17 +319,20 @@ run(LV2_Handle instance, uint32_t n_samples)
     int sample_rate = params -> sample_rate ;
     params -> db.len = n_samples ;
     params -> db.channels = 1 ;
-    params -> db.data = params -> input ;
-    params -> db.data_swap = params -> output ;
+    
+    for (int i = 0 ; i < n_samples ; i ++)
+        params -> output [i] = params -> input [i] * (float)(1 << 23);
     
     data_block_t * db = & params -> db ;
+    params -> db.data = params -> output ;
+    params -> db.data_swap = params -> input ;
     
     /* update bq states from tone controls */
     set_lsh_biquad(sample_rate * UPSAMPLE_RATIO, 500, params->tone_bass, &params->bq_bass);
     set_peq_biquad(sample_rate * UPSAMPLE_RATIO, 650, 500.0, params->tone_middle, &params->bq_middle);
     set_hsh_biquad(sample_rate * UPSAMPLE_RATIO, 800, params->tone_treble, &params->bq_treble);
 
-    gain = pow(10.f, params->gain / 20.f);
+    gain = pow(10.f, * params->gain / 20.f);
     
     /* highpass -> low shelf eq -> lowpass -> waveshaper */
     for (i = 0; i < db->len; i += 1) {
@@ -360,9 +364,11 @@ run(LV2_Handle instance, uint32_t n_samples)
         }
         
         ptr1 = params->buf[curr_channel] + params->bufidx[curr_channel];
+        //~ LOGD ("[%d] %f\n", curr_channel, result);
         /* convolve the output. We put two buffers side-by-side to avoid & in loop. */
         ptr1[IMPULSE_SIZE] = ptr1[0] = result / 500.f * (float) (MAX_SAMPLE >> 13);
         db->data[i] = convolve(ampmodels[params->impulse_model].impulse, ptr1, ampqualities[params->impulse_quality].quality) / 32.f;
+        params -> output [i] = db -> data [i] / (float)(1 << 23);
         
         params->bufidx[curr_channel] -= 1;
         if (params->bufidx[curr_channel] < 0)
