@@ -345,6 +345,8 @@
 #include <math.h>
 #include "log.h"
 
+#define URI "http://shaji.in/plugins/fonin-overdrive"
+
 #define RC_FEEDBACK_R          4.7e3
 #define RC_FEEDBACK_C          47e-9
 #define RC_DRIVE_C             51e-12   /* farads */
@@ -429,7 +431,7 @@ run(LV2_Handle instance, uint32_t n_samples)
         params -> output [i] = params -> input [i] * (float)(1 << 23);
     
     params -> db.data = params -> output ;
-    params -> db.data_swap = params -> input ;
+    params -> db.data_swap = params -> output ;
     
     int_fast32_t        i,count,bailout;
     int_fast8_t	        curr_channel = 0;
@@ -525,7 +527,7 @@ run(LV2_Handle instance, uint32_t n_samples)
         y = do_biquad(y, &dp->output_bass_cut, curr_channel);
 	
         /* scale up from -1..1 range */
-	*s = y * (float) DIST2_UPSCALE * (* dp->clip / 100.0f);
+	*s = y * (float) DIST2_UPSCALE * (* dp->clip / 100.0f)  / (float)(1 << 23);
 
 	/*if(*s > MAX_SAMPLE)
 	    *s=MAX_SAMPLE;
@@ -537,4 +539,42 @@ run(LV2_Handle instance, uint32_t n_samples)
 
         curr_channel = (curr_channel + 1) % db->channels;
     }    
+}
+
+static void
+deactivate(LV2_Handle instance) {
+
+}
+
+static void
+cleanup(LV2_Handle instance) {
+	free(instance);
+}
+
+static const void*
+extension_data(const char* uri)
+{
+	return NULL;
+}
+
+static const LV2_Descriptor descriptor = {
+	URI,
+	instantiate,
+	connect_port,
+	activate,
+	run,
+	deactivate,
+	cleanup,
+	extension_data
+};
+
+LV2_SYMBOL_EXPORT
+const LV2_Descriptor*
+lv2_descriptor(uint32_t index) {
+	switch (index) {
+        case 0:  
+            return &descriptor;
+        default: 
+            return NULL;
+	}
 }

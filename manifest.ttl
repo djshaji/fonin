@@ -11,7 +11,7 @@
 	rdfs:seeAlso <tubeamp.ttl> .
 
 <http://shaji.in/plugins/fonin-overdrive> a lv2:Plugin .
-<http://shaji.in/plugins/fonin-overdrive> lv2:binary <fonin.so> .
+<http://shaji.in/plugins/fonin-overdrive> lv2:binary <overdrive.so> .
 
 <http://shaji.in/plugins/fonin-overdrive> rdfs:seeAlso <overdrive.ttl> .
 <http://shaji.in/plugins/fonin-overdrive>
