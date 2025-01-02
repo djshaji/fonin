@@ -153,15 +153,6 @@ instantiate(const LV2_Descriptor*     descriptor,
 	TubeAmp * params = gnuitar_memalign(1, sizeof(struct tubeamp_params));
 
 	params->sample_rate = (int) sample_rate ;
-    params->stages = 4;
-    //~ * params->gain = 35.0; /* dB */
-    params->biasfactor = -7;
-    params->asymmetry = -3500;
-    params->impulse_model = 0;
-    params->impulse_quality = 1;
-
-    params->tone_bass = +3; /* dB */
-    params->tone_middle = -10; /* dB */
 
     /* configure the various stages */
     params->r_i[0] = 68e3 / 3000;
@@ -249,30 +240,32 @@ connect_port(LV2_Handle instance,
 			tubeamp -> output = (float *) data ;
 			break ;
 		case IMPULSE_QUALITY:
-            HERE LOGD ("%d\n", * (int *) data);
-			tubeamp->impulse_quality = * (int *) data ;
+			tubeamp->impulse_quality = (float *) data ;
 			break ;
 		case IMPULSE_MODEL:
-			tubeamp->impulse_model = * (int *) data ;
+			tubeamp->impulse_model = (float *) data ;
+			break;
+		case STAGES:
+			tubeamp->stages = (float *) data ;
 			break;
 		case GAIN:
 			tubeamp->gain =  (float *) data ;
 			LOGD ("gain: %f\n", tubeamp->gain);
 			break ;
 		case ASYMMETRY:
-			tubeamp->asymmetry = * (float *) data ;
+			tubeamp->asymmetry = (float *) data ;
 			break ;
 		case BIAS_FACTOR:
-			tubeamp->biasfactor = * (float *) data ;
+			tubeamp->biasfactor = (float *) data ;
 			break ;
 		case TONE_BASS:
-			tubeamp->tone_bass = * (float *) data ;
+			tubeamp->tone_bass = (float *) data ;
 			break;
 		case TONE_MIDDLE:
-			tubeamp->tone_middle = * (float *) data ;
+			tubeamp->tone_middle = (float *) data ;
 			break;
 		case TONE_TREBLE:
-			tubeamp->tone_treble = * (float *) data ;
+			tubeamp->tone_treble = (float *) data ;
 			break;
     }
 }
@@ -306,7 +299,16 @@ F_tube(float in, float r_i)
 
 static void
 activate(LV2_Handle instance) {
-	
+    TubeAmp * params = (TubeAmp *) instance ;
+    * params->stages = 4;
+    * params->gain = 35.0; /* dB */
+    * params->biasfactor = -7;
+    * params->asymmetry = -3500;
+    * params->impulse_model = 0;
+    * params->impulse_quality = 1;
+
+    * params->tone_bass = +3; /* dB */
+    * params->tone_middle = -10; /* dB */
 }
 
 static void
@@ -328,9 +330,9 @@ run(LV2_Handle instance, uint32_t n_samples)
     params -> db.data_swap = params -> input ;
     
     /* update bq states from tone controls */
-    set_lsh_biquad(sample_rate * UPSAMPLE_RATIO, 500, params->tone_bass, &params->bq_bass);
-    set_peq_biquad(sample_rate * UPSAMPLE_RATIO, 650, 500.0, params->tone_middle, &params->bq_middle);
-    set_hsh_biquad(sample_rate * UPSAMPLE_RATIO, 800, params->tone_treble, &params->bq_treble);
+    set_lsh_biquad(sample_rate * UPSAMPLE_RATIO, 500, * params->tone_bass, &params->bq_bass);
+    set_peq_biquad(sample_rate * UPSAMPLE_RATIO, 650, 500.0, * params->tone_middle, &params->bq_middle);
+    set_hsh_biquad(sample_rate * UPSAMPLE_RATIO, 800, * params->tone_treble, &params->bq_treble);
 
     gain = pow(10.f, * params->gain / 20.f);
     
@@ -341,7 +343,7 @@ run(LV2_Handle instance, uint32_t n_samples)
             /* IIR interpolation */
             params->in[curr_channel] = (db->data[i] + params->in[curr_channel] * (float) (UPSAMPLE_RATIO-1)) / (float) UPSAMPLE_RATIO;
             result = params->in[curr_channel] / (float) MAX_SAMPLE;
-            for (j = 0; j < params->stages; j += 1) {
+            for (j = 0; j < * params->stages; j += 1) {
                 /* gain of the block */
                 result *= gain;
                 /* low-pass filter that mimicks input capacitance */
@@ -349,7 +351,7 @@ run(LV2_Handle instance, uint32_t n_samples)
                 /* add feedback bias current for "punch" simulation for waveshaper */
                 result = F_tube(params->bias[j] - result, params->r_i[j]);
                 /* feedback bias */
-                params->bias[j] = do_biquad((params->asymmetry - params->biasfactor * result) * params->r_k_p[j], &params->biaslowpass[j], curr_channel);
+                params->bias[j] = do_biquad((* params->asymmetry - * params->biasfactor * result) * params->r_k_p[j], &params->biaslowpass[j], curr_channel);
                 /* high pass filter to remove bias from the current stage */
                 result = do_biquad(result, &params->highpass[j], curr_channel);
                 
@@ -367,7 +369,7 @@ run(LV2_Handle instance, uint32_t n_samples)
         //~ LOGD ("[%d] %f\n", curr_channel, result);
         /* convolve the output. We put two buffers side-by-side to avoid & in loop. */
         ptr1[IMPULSE_SIZE] = ptr1[0] = result / 500.f * (float) (MAX_SAMPLE >> 13);
-        db->data[i] = convolve(ampmodels[params->impulse_model].impulse, ptr1, ampqualities[params->impulse_quality].quality) / 32.f;
+        db->data[i] = convolve(ampmodels[(int) * params->impulse_model].impulse, ptr1, ampqualities[(int) * params->impulse_quality].quality) / 32.f;
         params -> output [i] = db -> data [i] / (float)(1 << 23);
         
         params->bufidx[curr_channel] -= 1;
