@@ -28,6 +28,12 @@
 	lv2:binary <distortion.so>  ;
 	rdfs:seeAlso <distortion.ttl> .
 
+<http://shaji.in/plugins/fonin-autowah> rdfs:seeAlso <autowah.ttl> .
+<http://shaji.in/plugins/fonin-autowah>
+	a lv2:Plugin ;
+	lv2:binary <autowah.so>  ;
+	rdfs:seeAlso <autowah.ttl> .
+
 <http://shaji.in/plugins/fonin-sustain> rdfs:seeAlso <sustain.ttl> .
 <http://shaji.in/plugins/fonin-sustain>
 	a lv2:Plugin ;
