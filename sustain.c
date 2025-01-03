@@ -1,4 +1,3 @@
-
 /*
  * GNUitar
  * Sustain effect
@@ -119,9 +118,9 @@ instantiate(const LV2_Descriptor*     descriptor,
 static void
 activate(LV2_Handle instance) {
     Sustain * psustain = (Sustain *) instance ;
-    * psustain->noise = 40;
-    * psustain->sust = 256;
-    * psustain->threshold = 256;
+    * psustain->noise = 40 / 2.56;
+    * psustain->sust = 256 / 2.56;
+    * psustain->threshold = 256 / 2.56;
 }
 
 static void
@@ -163,18 +162,21 @@ run(LV2_Handle instance, uint32_t n_samples)
     float           compFac;
 
     ds = (struct sustain_params *) instance;
-    data_block_t * db = & params -> db ;
+    data_block_t * db = & ds -> db ;
     ds -> db.len = n_samples ;
     ds -> db.channels = 1 ;
     
     for (int i = 0 ; i < n_samples ; i ++)
         ds -> output [i] = ds -> input [i] * (float)(1 << 23);
+    
+    ds -> db.data = ds -> output ;
+    ds -> db.data_swap = ds -> output ;
 
     count = db->len;
     s = db->data;
 
     volAccum = ds->volaccum;
-    CompW1 = ds->sust / 100.0f;
+    CompW1 = * ds->sust * 2.56/ 100.0f;
     CompW2 = 1.0f - CompW1;
 
     while (count) {
@@ -183,7 +185,7 @@ run(LV2_Handle instance, uint32_t n_samples)
 	 * update volAccum 
 	 */
 	tmp = (tmp < 0) ? -tmp : tmp;
-	volAccum = (256 - ds->noise) * volAccum + ds->noise * tmp;
+	volAccum = (256 - * ds->noise * 2.56) * volAccum + * ds->noise * 2.56 * tmp;
 	volAccum /= 256;
 
 	/*
@@ -194,11 +196,11 @@ run(LV2_Handle instance, uint32_t n_samples)
 	/*
 	 * handle gate 
 	 */
-	if (ds->threshold <= 1.0f)
+	if (* ds->threshold * 2.56 <= 1.0f)
 	    gateFac = 1.0f;
 	else
-	    gateFac = (volAccum > (ds->threshold * 100)) ? 1.0f :
-		((float) (volAccum) / (float) (ds->threshold * 100));
+	    gateFac = (volAccum > (* ds->threshold * 2.56 * 100)) ? 1.0f :
+		((float) (volAccum) / (float) (* ds->threshold * 2.56 * 100));
 	/*
 	 * process signal... 
 	 */
@@ -212,4 +214,43 @@ run(LV2_Handle instance, uint32_t n_samples)
     }
     ds->volaccum = volAccum;
     
+}
+
+
+static void
+deactivate(LV2_Handle instance) {
+
+}
+
+static void
+cleanup(LV2_Handle instance) {
+	free(instance);
+}
+
+static const void*
+extension_data(const char* uri)
+{
+	return NULL;
+}
+
+static const LV2_Descriptor descriptor = {
+	URI,
+	instantiate,
+	connect_port,
+	activate,
+	run,
+	deactivate,
+	cleanup,
+	extension_data
+};
+
+LV2_SYMBOL_EXPORT
+const LV2_Descriptor*
+lv2_descriptor(uint32_t index) {
+	switch (index) {
+        case 0:  
+            return &descriptor;
+        default: 
+            return NULL;
+	}
 }

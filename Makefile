@@ -1,7 +1,7 @@
 cc=$(CC) $(ARGS)
 ARGS=-fPIC -g
 
-all: tubeamp.o
+all: tubeamp.o overdrive.so distortion.so sustain.so
 	$(CC) $(ARGS) -o fonin.so -fPIC -Wl,-Bstatic -Wl,-Bdynamic -Wl,--as-needed -shared -lm *.o 
 	
 tubeamp.o: tubeamp.c tubeamp.h biquad.o
@@ -12,6 +12,9 @@ overdrive.so: overdrive.c overdrive.h biquad.o
 
 distortion.so: distortion.c distortion.h biquad.o rcfilter.o
 	$(CC) $(ARGS) -o distortion.so -fPIC -Wl,-Bstatic -Wl,-Bdynamic -Wl,--as-needed -shared -lm biquad.o rcfilter.o distortion.c
+	
+sustain.so: sustain.c sustain.h 
+	$(CC) $(ARGS) -o sustain.so -fPIC -Wl,-Bstatic -Wl,-Bdynamic -Wl,--as-needed -shared -lm sustain.c
 	
 biquad.o: biquad.c biquad.h utils.o
 	$(CC) $(ARGS) -c biquad.c
